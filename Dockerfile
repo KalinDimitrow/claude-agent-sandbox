@@ -20,6 +20,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libwayland-dev libxkbcommon-dev libx11-dev libasound2-dev libudev-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# clang + lld: some mounted projects' .cargo/config.toml point the linker at
+# these (faster links than system ld) via `linker = "clang"` / `-fuse-ld=lld`.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    clang lld \
+    && rm -rf /var/lib/apt/lists/*
+
 # No real GPU or display in this container. xvfb is a virtual (invisible)
 # X framebuffer so winit can open a window; mesa-vulkan-drivers provides
 # lavapipe, a software Vulkan device, so wgpu has a backend to render with.
