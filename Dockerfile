@@ -5,6 +5,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git build-essential ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Ad-hoc search/inspection tools. fd/bat are installed under different names on
+# Debian/Ubuntu (name clashes with other packages), so symlink them to the
+# names everyone actually types.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    jq fd-find fzf silversearcher-ag bat \
+    && ln -s "$(command -v fdfind)" /usr/local/bin/fd \
+    && ln -s "$(command -v batcat)" /usr/local/bin/bat \
+    && rm -rf /var/lib/apt/lists/*
+
+# Native dev libraries Bevy's Linux backend links against at build time:
+# Wayland/X11 windowing, ALSA audio, udev for input device hotplug.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libwayland-dev libxkbcommon-dev libx11-dev libasound2-dev libudev-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # Ubuntu 24.04 ships a default "ubuntu" user at UID 1000; replace it so the
 # container user can match your host UID (avoids permission problems on the
 # mounted project). Build with: HOST_UID=$(id -u) docker compose build
@@ -30,5 +45,26 @@ USER claude
 ARG CLAUDE_VERSION=stable
 RUN curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_VERSION}"
 ENV PATH="/home/claude/.local/bin:${PATH}"
+
+# Rust toolchain for inspecting Rust codebases: rustfmt/clippy for linting,
+# rust-src so rust-analyzer can resolve std library sources.
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+      --component rustfmt --component clippy --component rust-src --component rust-analyzer
+ENV PATH="/home/claude/.cargo/bin:${PATH}"
+# eza isn't in Ubuntu 24.04's repos yet; the toolchain above can build it directly.
+# --locked: build against eza's checked-in Cargo.lock, not newer dep versions
+# that fail to compile against this Rust version.
+RUN cargo install eza --locked
+
+# Projects can pin their own channel via rust-toolchain.toml, which rustup
+# fetches on demand from static.rust-lang.org (not in the runtime firewall's
+# allowlist, by design). Pre-installing the pin here at build time - when the
+# firewall isn't active yet - means rustup finds it already present at
+# runtime and never needs network. Update RUST_NIGHTLY_VERSION/components to
+# match the mounted project's rust-toolchain.toml; override with --build-arg
+# if a project needs a different pin.
+ARG RUST_NIGHTLY_VERSION=2026-07-15
+RUN rustup toolchain install "nightly-${RUST_NIGHTLY_VERSION}" \
+      --component rustc-codegen-cranelift-preview
 
 WORKDIR /workspace

@@ -16,6 +16,8 @@ REQUIRED_DOMAINS=(
 # Nice to have: a failed lookup only prints a warning.
 OPTIONAL_DOMAINS=(
   downloads.claude.ai      # plugins / updates
+  index.crates.io          # cargo dependency resolution
+  static.crates.io         # cargo crate downloads
 )
 
 # --- Fail closed: if anything below fails, leave the namespace fully blocked.
