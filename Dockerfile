@@ -20,6 +20,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libwayland-dev libxkbcommon-dev libx11-dev libasound2-dev libudev-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# No real GPU or display in this container. xvfb is a virtual (invisible)
+# X framebuffer so winit can open a window; mesa-vulkan-drivers provides
+# lavapipe, a software Vulkan device, so wgpu has a backend to render with.
+# Together they let a Bevy app run headless and save a screenshot to disk.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb mesa-vulkan-drivers \
+    && rm -rf /var/lib/apt/lists/*
+
+# winit's X11 backend dlopens these at runtime (not link time, so the -dev
+# headers above don't cover them): libX11, libX11-xcb, libXcursor, libXi,
+# and the X11 keymap extension for libxkbcommon (a separate package from the
+# core libxkbcommon0 that libxkbcommon-dev already pulled in).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libx11-6 libx11-xcb1 libxcursor1 libxi6 libxkbcommon-x11-0 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Ubuntu 24.04 ships a default "ubuntu" user at UID 1000; replace it so the
 # container user can match your host UID (avoids permission problems on the
 # mounted project). Build with: HOST_UID=$(id -u) docker compose build
