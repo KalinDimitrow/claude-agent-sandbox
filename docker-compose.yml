@@ -1,0 +1,86 @@
+# Setup (once):
+#   cp .env.example .env     # then edit PROJECT_DIR and HOST_UID in .env
+#   docker compose build
+# Run:
+#   docker compose run --rm claude claude
+#
+# Keep this directory (compose file + firewall script) OUTSIDE PROJECT_DIR so
+# the agent can never edit the files that configure its own firewall.
+
+services:
+  # Owns the shared network namespace. Needs no privileges at all.
+  netns-holder:
+    image: alpine
+    init: true
+    command: sleep infinity
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  # Runs once as the only container with NET_ADMIN; installs the firewall
+  # into the shared namespace, then exits.
+  firewall-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.firewall
+    network_mode: "service:netns-holder"
+    cap_drop: [ALL]
+    # NET_ADMIN edits the rules; NET_RAW lets iptables talk to ipset.
+    # Capabilities are per container: the agent below gets neither.
+    cap_add: [NET_ADMIN, NET_RAW]
+    volumes:
+      - ./init-firewall.sh:/init-firewall.sh:ro
+    entrypoint: ["bash", "/init-firewall.sh"]
+    restart: "no"
+    depends_on:
+      netns-holder:
+        condition: service_started
+
+  # The agent. Same network namespace, but no NET_ADMIN, so it cannot change
+  # the rules. Runs as a non-root user with all capabilities dropped.
+  claude:
+    build:
+      context: .
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        CLAUDE_VERSION: ${CLAUDE_VERSION:-stable}
+        ACP_VERSION: ${ACP_VERSION:-0.66.0}
+    network_mode: "service:netns-holder"
+    working_dir: ${PROJECT_DIR}
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # Rootless podman: map your host user to the same uid inside the container,
+    # so the agent can write your project. (Docker does not support this option.)
+    userns_mode: keep-id
+    pids_limit: 512
+    environment:
+      # Updates happen by rebuilding the image, not inside the container
+      # (in-container updates would be lost on exit anyway).
+      DISABLE_AUTOUPDATER: "1"
+      # Keep ALL Claude state (login, account info, settings) inside the
+      # claude-config volume. Without this, ~/.claude.json lives outside it
+      # and is lost on every `down`. Use an absolute path (not "~").
+      CLAUDE_CONFIG_DIR: /home/claude/.claude
+      # Don't attempt connections to hosts the firewall blocks anyway
+      # (telemetry/error-reporting hosts, claude.ai MCP connector proxy).
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+      ENABLE_CLAUDEAI_MCP_SERVERS: "false"
+      # Headless login (use ONE, set the value in .env, then uncomment):
+      # CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    volumes:
+      # Mounted at the SAME absolute path as on your host, because the IDE sends
+      # host paths to the agent (ACP).
+      - ${PROJECT_DIR:?Set PROJECT_DIR in .env (see .env.example)}:${PROJECT_DIR}
+      # Separate login state; your real ~/.claude is NOT exposed to the agent.
+      - claude-config:/home/claude/.claude
+    depends_on:
+      firewall-init:
+        condition: service_completed_successfully
+    stdin_open: true
+    tty: true
+
+# Docker-managed storage (not a folder in your project). Holds Claude's login
+# and settings so they survive container restarts. Deleted only by
+# `docker compose down -v` or `docker volume rm`.
+volumes:
+  claude-config:
