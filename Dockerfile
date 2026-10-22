@@ -2,7 +2,7 @@
 FROM ubuntu:24.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl git build-essential ca-certificates \
+    curl git build-essential ca-certificates unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Ad-hoc search/inspection tools. fd/bat are installed under different names on
@@ -41,6 +41,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libx11-6 libx11-xcb1 libxcursor1 libxi6 libxkbcommon-x11-0 \
     && rm -rf /var/lib/apt/lists/*
+
+# Blender, for the raw_assets/*.fbx -> data/assets/*.glb conversion scripts
+# (tools/convert_fbx_to_glb.sh). Deliberately NOT apt's `blender` package:
+# Ubuntu 24.04 ships 4.0.2, which predates the "Action Slots" animation API
+# (Blender 4.4+) that convert_single_fbx.py relies on - and Debian's package
+# strips Blender's bundled Python in favor of the system interpreter, so its
+# FBX importer can't find numpy either. The official tarball is
+# self-contained (bundles its own Python + numpy) and current enough to have
+# Action Slots. Runs headless (--background), no X server needed; the X11/GL
+# libs above cover its runtime deps except libXinerama and xz (for the
+# .tar.xz), added below.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libxinerama1 xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+ARG BLENDER_VERSION=5.2.2
+RUN curl -fsSL "https://download.blender.org/release/Blender${BLENDER_VERSION%.*}/blender-${BLENDER_VERSION}-linux-x64.tar.xz" \
+      -o /tmp/blender.tar.xz \
+    && tar -xf /tmp/blender.tar.xz -C /opt \
+    && rm /tmp/blender.tar.xz \
+    && ln -s "/opt/blender-${BLENDER_VERSION}-linux-x64/blender" /usr/local/bin/blender
 
 # Ubuntu 24.04 ships a default "ubuntu" user at UID 1000; replace it so the
 # container user can match your host UID (avoids permission problems on the
@@ -88,5 +108,10 @@ RUN cargo install eza --locked
 ARG RUST_NIGHTLY_VERSION=2026-07-15
 RUN rustup toolchain install "nightly-${RUST_NIGHTLY_VERSION}" \
       --component rustc-codegen-cranelift-preview
+
+# Bun, required by gstack (github.com/garrytan/gstack) - its skills/setup
+# script are built on Bun, not Node.
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/home/claude/.bun/bin:${PATH}"
 
 WORKDIR /workspace
