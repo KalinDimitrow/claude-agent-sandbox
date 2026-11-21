@@ -1,0 +1,29 @@
+# Optional overlay: show the agent's GUI apps on the host desktop (Wayland
+# and X11/Xwayland), with the GPU and host audio. Layer it on top:
+#   podman-compose -f docker-compose.yml -f docker-compose.desktop.yml up -d
+# Shares local sockets and the GPU only; the network firewall is unaffected.
+#
+# X_DISPLAY_NUM is the number in the host's $DISPLAY (":0" -> 0, ":1" -> 1).
+
+services:
+  claude:
+    environment:
+      XDG_RUNTIME_DIR: /home/agent/.xdg-runtime
+      WAYLAND_DISPLAY: ${WAYLAND_DISPLAY:-wayland-0}
+      DISPLAY: ":${X_DISPLAY_NUM:-0}"
+      XAUTHORITY: /home/agent/.Xauthority
+      PULSE_SERVER: unix:/home/agent/.xdg-runtime/pulse/native
+    volumes:
+      - ${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR is not set}/${WAYLAND_DISPLAY:-wayland-0}:/home/agent/.xdg-runtime/${WAYLAND_DISPLAY:-wayland-0}
+      - /tmp/.X11-unix/X${X_DISPLAY_NUM:-0}:/tmp/.X11-unix/X${X_DISPLAY_NUM:-0}
+      # /dev/null when the host has no Xauthority file (e.g. xhost-based auth).
+      - ${XAUTHORITY:-/dev/null}:/home/agent/.Xauthority:ro
+      - ${XDG_RUNTIME_DIR}/pulse/native:/home/agent/.xdg-runtime/pulse/native
+    devices:
+      - /dev/dri
+    # Rootless podman: keep the host user's "render"/"video" groups so the
+    # agent may open /dev/dri/renderD*.
+    group_add:
+      - keep-groups
+    # Chromium/Electron crashes with podman's default 64 MB /dev/shm.
+    shm_size: 1g

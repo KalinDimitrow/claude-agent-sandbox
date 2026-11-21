@@ -38,6 +38,9 @@ services:
   # The agent. Same network namespace, but no NET_ADMIN, so it cannot change
   # the rules. Runs as a non-root user with all capabilities dropped.
   claude:
+    # Distinct from the default "<project>_claude" tag, which
+    # docker-compose.old.yml still builds and uses.
+    image: localhost/sandbox-agent
     build:
       context: .
       args:
@@ -59,7 +62,7 @@ services:
       # Keep ALL Claude state (login, account info, settings) inside the
       # claude-config volume. Without this, ~/.claude.json lives outside it
       # and is lost on every `down`. Use an absolute path (not "~").
-      CLAUDE_CONFIG_DIR: /home/claude/.claude
+      CLAUDE_CONFIG_DIR: /home/agent/.claude
       # Don't attempt connections to hosts the firewall blocks anyway
       # (telemetry/error-reporting hosts, claude.ai MCP connector proxy).
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
@@ -72,7 +75,7 @@ services:
       # host paths to the agent (ACP).
       - ${PROJECT_DIR:?Set PROJECT_DIR in .env (see .env.example)}:${PROJECT_DIR}
       # Separate login state; your real ~/.claude is NOT exposed to the agent.
-      - claude-config:/home/claude/.claude
+      - claude-config:/home/agent/.claude
     depends_on:
       firewall-init:
         condition: service_completed_successfully
