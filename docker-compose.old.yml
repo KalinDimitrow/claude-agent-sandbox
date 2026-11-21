@@ -20,15 +20,14 @@ services:
   # into the shared namespace, then exits.
   firewall-init:
     build:
-      context: .
-      dockerfile: Dockerfile.firewall
+      context: firewall
     network_mode: "service:netns-holder"
     cap_drop: [ALL]
     # NET_ADMIN edits the rules; NET_RAW lets iptables talk to ipset.
     # Capabilities are per container: the agent below gets neither.
     cap_add: [NET_ADMIN, NET_RAW]
     volumes:
-      - ./init-firewall.sh:/init-firewall.sh:ro
+      - ./firewall/init-firewall.sh:/init-firewall.sh:ro
     entrypoint: ["bash", "/init-firewall.sh"]
     restart: "no"
     depends_on:

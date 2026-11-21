@@ -9,30 +9,31 @@
 set -euo pipefail
 cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 
-PROJECT="${COMPOSE_PROJECT:-$(basename "$PWD")}"
-FW="${PROJECT}_firewall-init_1"
-AGENT="${PROJECT}_claude_1"
+PROJECT="$(grep -E '^COMPOSE_PROJECT_NAME=' .env 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+[ -n "$PROJECT" ] || { echo "Set COMPOSE_PROJECT_NAME in .env" >&2; exit 1; }
+FW="${PROJECT}_firewall-init_container"
+AGENT="${PROJECT}_claude_container"
 
 ensure_up() {
   local running st code
-  running=$(podman inspect -f '{{.State.Running}}' "$AGENT" 2>/dev/null || echo false)
+  running=$(podman container inspect -f '{{.State.Running}}' "$AGENT" 2>/dev/null || echo false)
   if [ "$running" != "true" ]; then
-    podman-compose down >/dev/null 2>&1 || true   # fresh network namespace
-    podman-compose up -d
+    podman-compose -p "$PROJECT" down >/dev/null 2>&1 || true   # fresh network namespace
+    podman-compose -p "$PROJECT" up -d
     for _ in $(seq 1 60); do   # wait up to 60s for firewall-init to finish
-      st=$(podman inspect -f '{{.State.Status}}' "$FW" 2>/dev/null || echo missing)
+      st=$(podman container inspect -f '{{.State.Status}}' "$FW" 2>/dev/null || echo missing)
       [ "$st" = "exited" ] && break
       sleep 1
     done
     sleep 3   # guard against firewall-init being started a second time
   fi
 
-  st=$(podman inspect -f '{{.State.Status}}' "$FW" 2>/dev/null || echo missing)
+  st=$(podman container inspect -f '{{.State.Status}}' "$FW" 2>/dev/null || echo missing)
   if [ "$st" != "exited" ]; then
     echo "firewall-init is still running (status: $st); try again in a few seconds." >&2
     exit 1
   fi
-  code=$(podman inspect -f '{{.State.ExitCode}}' "$FW" 2>/dev/null || echo missing)
+  code=$(podman container inspect -f '{{.State.ExitCode}}' "$FW" 2>/dev/null || echo missing)
   if [ "$code" != "0" ]; then
     echo "Firewall did not complete successfully (exit: $code). Stopping the agent." >&2
     podman stop "$AGENT" >/dev/null 2>&1 || true

@@ -10,6 +10,7 @@
 services:
   # Owns the shared network namespace. Needs no privileges at all.
   netns-holder:
+    container_name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}_netns-holder_container
     image: alpine
     init: true
     command: sleep infinity
@@ -19,16 +20,16 @@ services:
   # Runs once as the only container with NET_ADMIN; installs the firewall
   # into the shared namespace, then exits.
   firewall-init:
+    container_name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}_firewall-init_container
     build:
-      context: .
-      dockerfile: Dockerfile.firewall
+      context: firewall
     network_mode: "service:netns-holder"
     cap_drop: [ALL]
     # NET_ADMIN edits the rules; NET_RAW lets iptables talk to ipset.
     # Capabilities are per container: the agent below gets neither.
     cap_add: [NET_ADMIN, NET_RAW]
     volumes:
-      - ./init-firewall.sh:/init-firewall.sh:ro
+      - ./firewall/init-firewall.sh:/init-firewall.sh:ro
     entrypoint: ["bash", "/init-firewall.sh"]
     restart: "no"
     depends_on:
@@ -38,11 +39,13 @@ services:
   # The agent. Same network namespace, but no NET_ADMIN, so it cannot change
   # the rules. Runs as a non-root user with all capabilities dropped.
   claude:
+    container_name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}_claude_container
     # Distinct from the default "<project>_claude" tag, which
     # docker-compose.old.yml still builds and uses.
     image: localhost/sandbox-agent
     build:
-      context: .
+      context: modules/agents
+      dockerfile: agents.Dockerfile
       args:
         HOST_UID: ${HOST_UID:-1000}
         CLAUDE_VERSION: ${CLAUDE_VERSION:-stable}

@@ -2,7 +2,7 @@
 # Fallback for the pre-module setup (Dockerfile.old, docker-compose.old.yml).
 # Bring the sandbox down, rebuild images only if the files that define them
 # changed since the last rebuild, then bring it back up. Run this after
-# editing Dockerfile.old/Dockerfile.firewall/docker-compose.old.yml/.env,
+# editing Dockerfile.old/firewall/Dockerfile/docker-compose.old.yml/.env,
 # before claude-box.old.sh.
 #
 #   rebuild.old.sh            rebuild only if tracked files changed
@@ -14,7 +14,7 @@ cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 # excluded: it's bind-mounted read-only at runtime (see docker-compose.old.yml),
 # so edits to it take effect on the next `up` without needing a rebuild.
 COMPOSE=(podman-compose -f docker-compose.old.yml)
-TRACKED_FILES=(Dockerfile.old Dockerfile.firewall docker-compose.old.yml .env)
+TRACKED_FILES=(Dockerfile.old firewall/Dockerfile docker-compose.old.yml .env)
 STATE_FILE=".last-build-state.old"
 
 state() {
