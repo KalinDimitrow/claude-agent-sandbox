@@ -1,6 +1,6 @@
 # Desktop applications: windowing, input, graphics and audio. Works both
 # headless (xvfb + lavapipe) and on the host's Wayland session with the GPU
-# when docker-compose.desktop.yml is layered on top.
+# (sockets and /dev/dri are shared by docker-compose.yml).
 ARG PARENT=localhost/sandbox-base
 FROM ${PARENT}
 
@@ -41,8 +41,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN printf 'pcm.!default { type pulse }\nctl.!default { type pulse }\n' > /etc/asound.conf
 
-# Host X sockets are bind-mounted one by one into this directory; it must
-# already exist with /tmp semantics so xvfb can still create its own socket.
+# Xvfb creates its socket here; pre-create it root-owned with /tmp semantics,
+# as X expects.
 RUN install -d -m 1777 /tmp/.X11-unix
 
 ARG AGENT_USER=agent

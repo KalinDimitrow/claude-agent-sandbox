@@ -70,12 +70,31 @@ services:
       # Headless login (use ONE, set the value in .env, then uncomment):
       # CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
       # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # Desktop: GUI apps open on the host's Wayland session, sound goes to the
+      # host's PulseAudio/PipeWire. X11 is deliberately not shared: any X client
+      # can read keystrokes from and type into every other X window on the host.
+      # Headless runs use their own Xvfb instead (DISPLAY=:99).
+      XDG_RUNTIME_DIR: /home/agent/.xdg-runtime
+      WAYLAND_DISPLAY: ${WAYLAND_DISPLAY:-wayland-0}
+      PULSE_SERVER: unix:/home/agent/.xdg-runtime/pulse/native
     volumes:
       # Mounted at the SAME absolute path as on your host, because the IDE sends
       # host paths to the agent (ACP).
       - ${PROJECT_DIR:?Set PROJECT_DIR in .env (see .env.example)}:${PROJECT_DIR}
       # Separate login state; your real ~/.claude is NOT exposed to the agent.
       - claude-config:/home/agent/.claude
+      # Desktop sockets. Run podman-compose from your desktop session, so that
+      # XDG_RUNTIME_DIR and WAYLAND_DISPLAY are set.
+      - ${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR is not set}/${WAYLAND_DISPLAY:-wayland-0}:/home/agent/.xdg-runtime/${WAYLAND_DISPLAY:-wayland-0}
+      - ${XDG_RUNTIME_DIR}/pulse/native:/home/agent/.xdg-runtime/pulse/native
+    devices:
+      - /dev/dri
+    # Rootless podman: keep the host user's "render"/"video" groups so the
+    # agent may open /dev/dri/renderD*.
+    group_add:
+      - keep-groups
+    # Chromium/Electron crashes with podman's default 64 MB /dev/shm.
+    shm_size: 1g
     depends_on:
       firewall-init:
         condition: service_completed_successfully
