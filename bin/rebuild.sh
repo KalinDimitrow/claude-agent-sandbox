@@ -2,12 +2,13 @@
 # Bring the sandbox down, rebuild images only if the files that define them
 # changed since the last rebuild, then bring it back up. Run this after
 # editing a Dockerfile/docker-compose.yml/.env or the module list below,
-# before claude-box.sh.
+# before bin/claude-box.sh.
 #
 #   rebuild.sh            rebuild only if tracked files changed
 #   rebuild.sh --force    rebuild unconditionally (e.g. after an upstream base-image update)
 set -euo pipefail
-cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+# Scripts live in bin/; work from the sandbox root (compose file, .env, modules/).
+cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.."
 
 # Image modules, built in this order, each on top of the previous one
 # (modules/<path>.Dockerfile -> localhost/sandbox-<file name>, e.g.
@@ -27,7 +28,7 @@ MODULES=(
 # Files baked into the images at build time. init-firewall.sh is deliberately
 # excluded: it's bind-mounted read-only at runtime (see docker-compose.yml),
 # so edits to it take effect on the next `up` without needing a rebuild.
-TRACKED_FILES=(modules/*.Dockerfile modules/*/*.Dockerfile firewall/Dockerfile docker-compose.yml .env rebuild.sh)
+TRACKED_FILES=(modules/*.Dockerfile modules/*/*.Dockerfile firewall/Dockerfile docker-compose.yml .env bin/rebuild.sh)
 STATE_FILE=".last-build-state"
 
 state() {
@@ -79,4 +80,4 @@ fi
 
 podman-compose -p "$PROJECT" up -d
 
-echo "Up. Run ./claude-box.sh to start Claude Code."
+echo "Up. Run bin/claude-box.sh to start Claude Code."

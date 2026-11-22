@@ -156,23 +156,4 @@ else
   echo "WARNING: ip6tables not found; IPv6 is not filtered"
 fi
 
-echo "Firewall configured. Verifying..."
-
-if curl -s -o /dev/null --connect-timeout 5 https://example.com; then
-  echo "ERROR: verification failed - example.com is reachable"; exit 1
-fi
-echo "OK: example.com blocked"
-
-if timeout 5 bash -c 'echo > /dev/tcp/1.1.1.1/22' 2>/dev/null; then
-  echo "ERROR: verification failed - arbitrary SSH is reachable"; exit 1
-fi
-echo "OK: arbitrary SSH blocked"
-
-curl -fsS -o /dev/null --connect-timeout 5 https://api.github.com/zen \
-  || { echo "ERROR: cannot reach api.github.com"; exit 1; }
-echo "OK: GitHub reachable"
-
-# Any HTTP status counts; we only care that the connection succeeds.
-curl -s -o /dev/null --connect-timeout 5 https://api.anthropic.com \
-  || { echo "ERROR: cannot reach api.anthropic.com"; exit 1; }
-echo "OK: api.anthropic.com reachable"
+verify

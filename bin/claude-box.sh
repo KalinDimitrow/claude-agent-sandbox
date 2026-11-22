@@ -7,7 +7,8 @@
 #                          (register it in ~/.jetbrains/acp.json)
 #   claude-box.sh --acp-test   hand-made ACP handshake, to debug connection errors
 set -euo pipefail
-cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+# Scripts live in bin/; work from the sandbox root (compose file, .env, modules/).
+cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.."
 
 PROJECT="$(grep -E '^COMPOSE_PROJECT_NAME=' .env 2>/dev/null | tail -1 | cut -d= -f2- || true)"
 [ -n "$PROJECT" ] || { echo "Set COMPOSE_PROJECT_NAME in .env" >&2; exit 1; }
