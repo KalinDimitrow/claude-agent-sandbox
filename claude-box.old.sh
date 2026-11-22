@@ -1,4 +1,5 @@
 #!/bin/bash
+# Fallback launcher for the pre-module setup (Dockerfile.old, docker-compose.old.yml).
 # Start the sandbox if needed, REFUSE to continue unless the firewall succeeded,
 # then run Claude inside the container.
 #
@@ -17,8 +18,8 @@ ensure_up() {
   local running st code
   running=$(podman inspect -f '{{.State.Running}}' "$AGENT" 2>/dev/null || echo false)
   if [ "$running" != "true" ]; then
-    podman-compose down >/dev/null 2>&1 || true   # fresh network namespace
-    podman-compose up -d
+    podman-compose -f docker-compose.old.yml down >/dev/null 2>&1 || true   # fresh network namespace
+    podman-compose -f docker-compose.old.yml up -d
     for _ in $(seq 1 60); do   # wait up to 60s for firewall-init to finish
       st=$(podman inspect -f '{{.State.Status}}' "$FW" 2>/dev/null || echo missing)
       [ "$st" = "exited" ] && break

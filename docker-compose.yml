@@ -10,6 +10,7 @@
 services:
   # Owns the shared network namespace. Needs no privileges at all.
   netns-holder:
+    container_name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}_netns-holder_container
     image: alpine
     init: true
     command: sleep infinity
@@ -19,16 +20,16 @@ services:
   # Runs once as the only container with NET_ADMIN; installs the firewall
   # into the shared namespace, then exits.
   firewall-init:
+    container_name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}_firewall-init_container
     build:
-      context: .
-      dockerfile: Dockerfile.firewall
+      context: firewall
     network_mode: "service:netns-holder"
     cap_drop: [ALL]
     # NET_ADMIN edits the rules; NET_RAW lets iptables talk to ipset.
     # Capabilities are per container: the agent below gets neither.
     cap_add: [NET_ADMIN, NET_RAW]
     volumes:
-      - ./init-firewall.sh:/init-firewall.sh:ro
+      - ./firewall/init-firewall.sh:/init-firewall.sh:ro
     entrypoint: ["bash", "/init-firewall.sh"]
     restart: "no"
     depends_on:
@@ -38,8 +39,13 @@ services:
   # The agent. Same network namespace, but no NET_ADMIN, so it cannot change
   # the rules. Runs as a non-root user with all capabilities dropped.
   claude:
+    container_name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}_claude_container
+    # Distinct from the default "<project>_claude" tag, which
+    # docker-compose.old.yml still builds and uses.
+    image: localhost/sandbox-agent
     build:
-      context: .
+      context: modules/agents
+      dockerfile: agents.Dockerfile
       args:
         HOST_UID: ${HOST_UID:-1000}
         CLAUDE_VERSION: ${CLAUDE_VERSION:-stable}
@@ -59,7 +65,7 @@ services:
       # Keep ALL Claude state (login, account info, settings) inside the
       # claude-config volume. Without this, ~/.claude.json lives outside it
       # and is lost on every `down`. Use an absolute path (not "~").
-      CLAUDE_CONFIG_DIR: /home/claude/.claude
+      CLAUDE_CONFIG_DIR: /home/agent/.claude
       # Don't attempt connections to hosts the firewall blocks anyway
       # (telemetry/error-reporting hosts, claude.ai MCP connector proxy).
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
@@ -67,12 +73,31 @@ services:
       # Headless login (use ONE, set the value in .env, then uncomment):
       # CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
       # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # Desktop: GUI apps open on the host's Wayland session, sound goes to the
+      # host's PulseAudio/PipeWire. X11 is deliberately not shared: any X client
+      # can read keystrokes from and type into every other X window on the host.
+      # Headless runs use their own Xvfb instead (DISPLAY=:99).
+      XDG_RUNTIME_DIR: /home/agent/.xdg-runtime
+      WAYLAND_DISPLAY: ${WAYLAND_DISPLAY:-wayland-0}
+      PULSE_SERVER: unix:/home/agent/.xdg-runtime/pulse/native
     volumes:
       # Mounted at the SAME absolute path as on your host, because the IDE sends
       # host paths to the agent (ACP).
       - ${PROJECT_DIR:?Set PROJECT_DIR in .env (see .env.example)}:${PROJECT_DIR}
       # Separate login state; your real ~/.claude is NOT exposed to the agent.
-      - claude-config:/home/claude/.claude
+      - claude-config:/home/agent/.claude
+      # Desktop sockets. Run podman-compose from your desktop session, so that
+      # XDG_RUNTIME_DIR and WAYLAND_DISPLAY are set.
+      - ${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR is not set}/${WAYLAND_DISPLAY:-wayland-0}:/home/agent/.xdg-runtime/${WAYLAND_DISPLAY:-wayland-0}
+      - ${XDG_RUNTIME_DIR}/pulse/native:/home/agent/.xdg-runtime/pulse/native
+    devices:
+      - /dev/dri
+    # Rootless podman: keep the host user's "render"/"video" groups so the
+    # agent may open /dev/dri/renderD*.
+    group_add:
+      - keep-groups
+    # Chromium/Electron crashes with podman's default 64 MB /dev/shm.
+    shm_size: 1g
     depends_on:
       firewall-init:
         condition: service_completed_successfully
